@@ -1,0 +1,1 @@
+# RemedyBG VS Code Support
