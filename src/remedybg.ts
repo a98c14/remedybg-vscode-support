@@ -1,5 +1,3 @@
-import * as vscode from "vscode";
-
 /* eslint-disable @typescript-eslint/naming-convention */
 
 export enum TargetState {
@@ -9,6 +7,7 @@ export enum TargetState {
 }
 
 export enum CommandType {
+    None = 0,
     BringDebuggerToForeground = 50,
     SetWindowPos = 51,
     GetWindowPos = 52,
@@ -40,14 +39,14 @@ export enum CommandType {
     AddWatch = 701,
 }
 
-enum BreakpointKind {
+export enum BreakpointKind {
     FunctionName = 1,
     FilenameLine = 2,
     Address = 3,
     Processor = 4,
 }
 
-enum CommandResult {
+export enum CommandResult {
     Unknown = 0,
     Ok = 1,
     Fail = 2,
@@ -62,7 +61,7 @@ enum CommandResult {
     InvalidBreakpointKind = 11,
 }
 
-enum SourceLocChangeReason {
+export enum SourceLocChangeReason {
     Unspecified = 0,
     CommandLine = 1,
     Driver = 2,
@@ -78,7 +77,7 @@ enum SourceLocChangeReason {
     DebugBreak = 12,
 }
 
-enum EventType {
+export enum EventType {
     ExitProcess = 100,
     TargetStarted = 101,
     TargetAttached = 102,
@@ -93,8 +92,20 @@ enum EventType {
     SourceLocationChanged = 200,
 }
 
-export function sendCommand(command: CommandType) {}
+type AddBreakpointAtFilenameLineCommandArg = {
+    type: CommandType.AddBreakpointAtFilenameLine;
+    filename: string;
+    lineNumber: number;
+    vscodeId: string;
+};
 
-export function startSession() {
-    vscode.window.showInformationMessage("Starting RemedyBG session");
-}
+type RemoveBreakpointAtFilenameLineCommandArg = {
+    type: CommandType.DeleteBreakpoint;
+    vscodeId: string;
+};
+
+type StartDebuggingCommandArg = {
+    type: CommandType.StartDebugging;
+};
+
+export type CommandArgs = RemoveBreakpointAtFilenameLineCommandArg | AddBreakpointAtFilenameLineCommandArg | StartDebuggingCommandArg;

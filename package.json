@@ -2,6 +2,10 @@
     "name": "remedybg-support",
     "displayName": "RemedyBG Support",
     "description": "RemedyBG debugger support for VS Code.",
+    "author": {
+        "name": "Selim Yesilkaya",
+        "email": "selimyesilkaya@gmail.com"
+    },
     "version": "0.0.1",
     "engines": {
         "vscode": "^1.81.0"
