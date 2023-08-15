@@ -28,7 +28,7 @@ export enum CommandType {
     RestartDebugging = 303,
     StepIntoByLine = 307,
     StepOverByLine = 309,
-    StepOut = 1,
+    StepOut = 311,
     ContinueExecution = 312,
     RunToFileAtLine = 313,
     AddBreakpointAtFilenameLine = 604,
@@ -108,4 +108,30 @@ type StartDebuggingCommandArg = {
     type: CommandType.StartDebugging;
 };
 
-export type CommandArgs = RemoveBreakpointAtFilenameLineCommandArg | AddBreakpointAtFilenameLineCommandArg | StartDebuggingCommandArg;
+type StopDebuggingCommandArg = {
+    type: CommandType.StopDebugging;
+};
+
+type StepIntoByLineCommandArg = {
+    type: CommandType.StepIntoByLine;
+};
+
+type StepOverByLineCommandArg = {
+    type: CommandType.StepOverByLine;
+};
+
+type StepOutCommandArg = {
+    type: CommandType.StepOut;
+};
+
+type ContinueExecutionCommandArg = {
+    type: CommandType.ContinueExecution;
+};
+
+type GotoFileAtLineCommandArg = {
+    type: CommandType.GotoFileAtLine;
+    filename: string;
+    lineNumber: number;
+};
+
+export type CommandArgs = RemoveBreakpointAtFilenameLineCommandArg | AddBreakpointAtFilenameLineCommandArg | StartDebuggingCommandArg | StopDebuggingCommandArg | GotoFileAtLineCommandArg | StepIntoByLineCommandArg | StepOverByLineCommandArg | StepOutCommandArg | ContinueExecutionCommandArg;

@@ -19,6 +19,38 @@
             {
                 "command": "remedybg-support.start_session",
                 "title": "RemedyBG: Start Session"
+            },
+            {
+                "command": "remedybg-support.stop_session",
+                "title": "RemedyBG: Stop Session"
+            },
+            {
+                "command": "remedybg-support.start_debugging",
+                "title": "RemedyBG: Start Debugging"
+            },
+            {
+                "command": "remedybg-support.stop_debugging",
+                "title": "RemedyBG: Stop Debugging"
+            },
+            {
+                "command": "remedybg-support.go_to_file_at_line",
+                "title": "RemedyBG: Go to line"
+            },
+            {
+                "command": "remedybg-support.step_into",
+                "title": "RemedyBG: Step Into"
+            },
+            {
+                "command": "remedybg-support.step_over",
+                "title": "RemedyBG: Step Over"
+            },
+            {
+                "command": "remedybg-support.step_out",
+                "title": "RemedyBG: Step Out"
+            },
+            {
+                "command": "remedybg-support.continue_execution",
+                "title": "RemedyBG: Continue Execution"
             }
         ]
     },
