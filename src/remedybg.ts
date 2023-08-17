@@ -134,9 +134,13 @@ type GotoFileAtLineCommandArg = {
     lineNumber: number;
 };
 
-type GetBreakpoint = {
+type GetBreakpointCommandArg = {
     type: CommandType.GetBreakpoint;
     breakpointId: number;
+};
+
+type CommandExitDebuggerCommandArg = {
+    type: CommandType.CommandExitDebugger;
 };
 
 export type CommandArgs =
@@ -149,4 +153,5 @@ export type CommandArgs =
     | StepOverByLineCommandArg
     | StepOutCommandArg
     | ContinueExecutionCommandArg
-    | GetBreakpoint;
+    | GetBreakpointCommandArg
+    | CommandExitDebuggerCommandArg;

@@ -30,7 +30,11 @@ let commandQueue: CommandArgs[] = [];
 
 export function sendCommand(command: CommandArgs) {
     if (!client || client.destroyed) {
-        vscode.window.showErrorMessage("RemedyBG connection is not live, can't send command!");
+        vscode.window.showInformationMessage(`RemedyBG connection is not live. Would you like to start a new session?`, "Yes", "No").then((option) => {
+            if (option === "Yes") {
+                vscode.commands.executeCommand("remedybg-support.start_session");
+            }
+        });
         return;
     }
 
@@ -164,9 +168,8 @@ function processResponseMessage(buffer: Buffer, offset: number, command: Command
     }
 }
 
-export function startSession(context: vscode.ExtensionContext, onConnect: () => void, onDisconnect: () => void) {
+export function startSession(onConnect: () => void, onDisconnect: () => void) {
     const name = vscode.workspace.name + "_" + generateRandomString();
-    vscode.window.showInformationMessage("Starting RemedyBG session");
     const commandPipePath = PIPE_PREFIX + name;
     const eventPipePath = PIPE_PREFIX + name + "-events";
 
@@ -348,13 +351,13 @@ export function startSession(context: vscode.ExtensionContext, onConnect: () => 
 }
 
 export function stopSession() {
-    setTimeout(() => {
-        client?.destroy();
-        eventClient?.destroy();
-        childProcess?.kill();
-
-        client = undefined;
-        eventClient = undefined;
-        client = undefined;
-    }, 100);
+    client?.destroy();
+    eventClient?.destroy();
+    if (childProcess?.pid) {
+        process.kill(childProcess.pid);
+    }
+    childProcess?.kill("SIGKILL");
+    client = undefined;
+    eventClient = undefined;
+    client = undefined;
 }

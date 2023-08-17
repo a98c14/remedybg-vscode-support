@@ -15,6 +15,16 @@
     ],
     "main": "./out/extension.js",
     "contributes": {
+        "configuration": {
+            "title": "RemedyBG",
+            "properties": {
+                "remedybg-support.goToLineOnNewBreakpoint": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "On RemedyBG, go to the line of the newly added breakpoint when a new breakpoint is insterted."
+                }
+            }
+        },
         "commands": [
             {
                 "command": "remedybg-support.start_session",
@@ -51,6 +61,10 @@
             {
                 "command": "remedybg-support.continue_execution",
                 "title": "RemedyBG: Continue Execution"
+            },
+            {
+                "command": "remedybg-support.exit",
+                "title": "RemedyBG: Exit"
             }
         ]
     },

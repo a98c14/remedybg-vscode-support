@@ -5,6 +5,10 @@ import * as command from "./command";
 let remedybgStatusBar: vscode.StatusBarItem;
 const remedybgDisconnectedStatusText = "RemedyBG: Disconnected";
 const remedybgConnectedStatusText = "RemedyBG: Connected";
+const extensionId = "remedybg-support";
+
+/* Options */
+const goToLineOnNewBreakpointConfigId = "goToLineOnNewBreakpoint";
 
 /* Command Ids */
 const askStartSessionCommandId = "remedybg-support.ask_start_session";
@@ -18,12 +22,34 @@ const stepOverCommandId = "remedybg-support.step_over";
 const stepOutCommandId = "remedybg-support.step_out";
 const continueExecutionCommandId = "remedybg-support.continue_execution";
 const goToFileAtLineCommandId = "remedybg-support.go_to_file_at_line";
+const exitCommandId = "remedybg-support.exit";
+
+type ConfigStore = {
+    goToLineWhenBreakpointUpdated: boolean;
+};
+
+let configStore: ConfigStore = {
+    goToLineWhenBreakpointUpdated: false,
+};
+
+function loadConfiguration() {
+    const configuration = vscode.workspace.getConfiguration(extensionId);
+    configStore.goToLineWhenBreakpointUpdated = configuration.get(goToLineOnNewBreakpointConfigId) ?? false;
+}
 
 export function activate(context: vscode.ExtensionContext) {
     remedybgStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     remedybgStatusBar.command = askStartSessionCommandId;
     remedybgStatusBar.text = remedybgDisconnectedStatusText;
     remedybgStatusBar.show();
+
+    loadConfiguration();
+    vscode.workspace.onDidChangeConfiguration((e) => {
+        if (!e.affectsConfiguration(extensionId)) {
+            return;
+        }
+        loadConfiguration();
+    });
 
     const askStartSessionCommand = vscode.commands.registerCommand(askStartSessionCommandId, () => {
         vscode.window.showInformationMessage("RemedyBG session is not alive. Would you like to start a new session?", "Yes, start a new session").then(() => {
@@ -39,7 +65,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     const startSessionCommand = vscode.commands.registerCommand(startSessionCommandId, () => {
         command.startSession(
-            context,
             () => {
                 vscode.window.showInformationMessage("Established connection with RemedyBG");
                 remedybgStatusBar.text = remedybgConnectedStatusText;
@@ -55,10 +80,16 @@ export function activate(context: vscode.ExtensionContext) {
 
     const stopSessionCommand = vscode.commands.registerCommand(stopSessionCommandId, () => {
         command.stopSession();
+        remedybgStatusBar.text = remedybgDisconnectedStatusText;
+        remedybgStatusBar.command = askStartSessionCommandId;
     });
 
     const startDebuggingCommand = vscode.commands.registerCommand(startDebuggingCommandId, () => {
         command.sendCommand({ type: CommandType.StartDebugging });
+    });
+
+    const exitCommand = vscode.commands.registerCommand(exitCommandId, () => {
+        command.sendCommand({ type: CommandType.CommandExitDebugger });
     });
 
     const stopDebuggingCommand = vscode.commands.registerCommand(stopDebuggingCommandId, () => {
@@ -90,16 +121,14 @@ export function activate(context: vscode.ExtensionContext) {
         command.sendCommand({ type: CommandType.GotoFileAtLine, filename: activeEditor.document.uri.fsPath, lineNumber: activeEditor.selection.start.line + 1 });
     });
 
-    // TODO(selim): pull this from config
-    const goToLineWhenBreakpointUpdated = true;
     vscode.debug.onDidChangeBreakpoints((e) => {
         for (let i = 0; i < e.added.length; i++) {
             const breakpoint = e.added[i] as vscode.SourceBreakpoint;
             const breakpointPath = breakpoint.location.uri.fsPath;
             const breakpointLine = breakpoint.location.range.start.line + 1;
             command.sendCommand({ type: CommandType.AddBreakpointAtFilenameLine, filename: breakpointPath, lineNumber: breakpointLine, vscodeId: breakpoint.id });
-
-            if (goToLineWhenBreakpointUpdated) {
+            console.log("goto", configStore.goToLineWhenBreakpointUpdated);
+            if (configStore.goToLineWhenBreakpointUpdated) {
                 setTimeout(() => {
                     command.sendCommand({ type: CommandType.GotoFileAtLine, filename: breakpointPath, lineNumber: breakpointLine });
                 }, 100);
@@ -123,6 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(stepOverCommand);
     context.subscriptions.push(stepOutCommand);
     context.subscriptions.push(continueExecutionCommand);
+    context.subscriptions.push(exitCommand);
 }
 
 // This method is called when your extension is deactivated
