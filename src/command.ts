@@ -1,8 +1,8 @@
-import { ChildProcess, exec } from "child_process";
+import { ChildProcess, exec, spawn } from "child_process";
 import * as net from "net";
 import { TextDecoder, TextEncoder } from "util";
 import * as vscode from "vscode";
-import { CommandArgs, CommandType, CommandResult, BreakpointKind, EventType } from "./remedybg";
+import { CommandArgs, CommandType, CommandResult, BreakpointKind, EventType, DebuggingTargetBehavior, ModifiedSessionBehavior } from "./remedybg";
 
 const PIPE_PREFIX = "\\\\.\\pipe\\";
 const encoder = new TextEncoder();
@@ -16,7 +16,7 @@ let childProcess: ChildProcess | undefined = undefined;
 function writeString(str: string, buffer: Buffer, offset: number): number {
     buffer.writeUInt16LE(str.length, offset);
     const { written } = encoder.encodeInto(str, buffer.subarray(offset + 2));
-    return written + 2;
+    return offset + written + 2;
 }
 
 function generateRandomString(): string {
@@ -38,9 +38,16 @@ export function sendCommand(command: CommandArgs) {
         return;
     }
 
-    let offset = 0;
-    offset += writeBuffer.writeUInt16LE(command.type);
+    let offset = writeBuffer.writeUInt16LE(command.type);
     switch (command.type) {
+        case CommandType.CommandExitDebugger:
+            {
+                offset = writeBuffer.writeUInt8(command.debugBehaviour, offset);
+                offset = writeBuffer.writeUInt8(command.sessionBehaviour, offset);
+                // NOTE: If the child process is not killed, exiting RemedyBG closes the VS Code instance.
+                childProcess?.kill();
+            }
+            break;
         case CommandType.GetBreakpoint:
             {
                 offset += writeBuffer.writeUInt32LE(command.breakpointId, offset);
@@ -52,9 +59,9 @@ export function sendCommand(command: CommandArgs) {
                     return;
                 }
 
-                offset += writeString(command.filename, writeBuffer, offset);
-                offset += writeBuffer.writeUInt32LE(command.lineNumber, offset);
-                offset += writeBuffer.writeUInt16LE(0, offset);
+                offset = writeString(command.filename, writeBuffer, offset);
+                offset = writeBuffer.writeUInt32LE(command.lineNumber, offset);
+                offset = writeBuffer.writeUInt16LE(0, offset);
             }
             break;
         case CommandType.DeleteBreakpoint:
@@ -64,54 +71,58 @@ export function sendCommand(command: CommandArgs) {
                     return;
                 }
 
-                offset += writeBuffer.writeUInt32LE(breakpointId, offset);
-                offset += writeBuffer.writeUInt16LE(0, offset);
+                breakpoints.delete(breakpointId);
+                breakpointsVsCode.delete(command.vscodeId);
+
+                offset = writeBuffer.writeUInt32LE(breakpointId, offset);
+                offset = writeBuffer.writeUInt16LE(0, offset);
             }
             break;
         case CommandType.GotoFileAtLine:
             {
-                offset += writeString(command.filename, writeBuffer, offset);
-                offset += writeBuffer.writeUInt32LE(command.lineNumber, offset);
-                offset += writeBuffer.writeUInt16LE(0, offset);
+                offset = writeString(command.filename, writeBuffer, offset);
+                offset = writeBuffer.writeUInt32LE(command.lineNumber, offset);
+                offset = writeBuffer.writeUInt16LE(0, offset);
             }
             break;
         case CommandType.StartDebugging:
             {
-                offset += writeBuffer.writeUInt8(0, offset);
+                offset = writeBuffer.writeUInt8(0, offset);
             }
             break;
     }
 
-    commandQueue.push(command);
+    console.log(`Sent Command: ${CommandType[command.type]}`);
     client.write(writeBuffer.subarray(0, offset), (error) => {
         if (error) {
             vscode.window.showErrorMessage(`Received error message from RemedyBG. Error: ${error.name} ${error.message}`);
             return;
         }
     });
+    commandQueue.push(command);
 }
 
-function processResponseMessage(buffer: Buffer, offset: number, command: CommandArgs) {
+function processResponseCommand(buffer: Buffer, offset: number, command: CommandArgs): number {
     switch (command.type) {
         case CommandType.StartDebugging:
         case CommandType.StopDebugging:
+            break;
+        case CommandType.GotoFileAtLine:
+            const fileId = buffer.readUInt32LE(offset);
+            offset += 4;
             break;
         case CommandType.GetBreakpoint:
             {
                 const breakpointId = buffer.readInt32LE(offset);
                 offset += 4;
 
-                if (breakpoints.has(breakpointId)) {
-                    return;
-                }
-
-                const enabled = buffer.readInt8(offset);
+                const enabled = buffer.readUInt8(offset);
                 offset += 1;
-                const moduleNameLength = buffer.readInt16LE(offset);
+                const moduleNameLength = buffer.readUInt16LE(offset);
                 offset += 2;
                 const moduleName = decoder.decode(buffer.subarray(offset, offset + moduleNameLength));
                 offset += moduleNameLength;
-                const conditionExprLength = buffer.readInt16LE(offset);
+                const conditionExprLength = buffer.readUInt16LE(offset);
                 offset += 2;
                 const conditionExpr = decoder.decode(buffer.subarray(offset, offset + conditionExprLength));
                 offset += conditionExprLength;
@@ -120,6 +131,12 @@ function processResponseMessage(buffer: Buffer, offset: number, command: Command
                 offset += 1;
                 switch (kind) {
                     case BreakpointKind.FunctionName:
+                        const functionNameLength = buffer.readInt16LE(offset);
+                        offset += 2;
+                        const functionName = decoder.decode(buffer.subarray(offset, offset + functionNameLength));
+                        offset += functionNameLength;
+                        const overloadId = buffer.readUInt32LE(offset);
+                        offset += 4;
                         break;
                     case BreakpointKind.FilenameLine:
                         {
@@ -127,17 +144,38 @@ function processResponseMessage(buffer: Buffer, offset: number, command: Command
                             offset += 2;
                             const filename = decoder.decode(buffer.subarray(offset, offset + filenameLength));
                             offset += filenameLength;
-                            const line = buffer.readInt32LE(offset);
+                            const line = buffer.readUInt32LE(offset);
                             offset += 4;
-                            const breakpoint: vscode.SourceBreakpoint = new vscode.SourceBreakpoint({ uri: vscode.Uri.file(filename), range: new vscode.Range(line - 1, 0, line - 1, 0) }, true);
-                            breakpoints.set(breakpointId, breakpoint.id);
-                            breakpointsVsCode.set(breakpoint.id, breakpointId);
-                            vscode.debug.addBreakpoints([breakpoint]);
+
+                            if (!breakpoints.has(breakpointId)) {
+                                const existingBreakpoints = vscode.debug.breakpoints;
+                                for (let i = 0; i < existingBreakpoints.length; i++) {
+                                    const sourceBreakpoint = existingBreakpoints[i] as vscode.SourceBreakpoint;
+                                    if (sourceBreakpoint && sourceBreakpoint.location.uri.fsPath === filename && sourceBreakpoint.location.range.start.line === line - 1) {
+                                        return offset;
+                                    }
+                                }
+
+                                const breakpoint: vscode.SourceBreakpoint = new vscode.SourceBreakpoint({ uri: vscode.Uri.file(filename), range: new vscode.Range(line - 1, 0, line - 1, 0) }, true);
+                                breakpoints.set(breakpointId, breakpoint.id);
+                                breakpointsVsCode.set(breakpoint.id, breakpointId);
+                                vscode.debug.addBreakpoints([breakpoint]);
+                            }
                         }
                         break;
                     case BreakpointKind.Address:
+                        const address = buffer.readBigUint64LE(offset);
+                        offset += 8;
                         break;
                     case BreakpointKind.Processor:
+                        const addressExprLength = buffer.readInt16LE(offset);
+                        offset += 2;
+                        const addressExpr = decoder.decode(buffer.subarray(offset, offset + addressExprLength));
+                        offset += addressExprLength;
+                        const numBytes = buffer.readUint8(offset);
+                        offset += 1;
+                        const accessKind = buffer.readUint8(offset);
+                        offset += 1;
                         break;
                 }
             }
@@ -146,7 +184,7 @@ function processResponseMessage(buffer: Buffer, offset: number, command: Command
             {
                 if (!command.vscodeId) {
                     vscode.window.showErrorMessage("RemedyBG: Invalid command!");
-                    return;
+                    return offset;
                 }
                 const breakpointId = buffer.readInt32LE(offset);
                 offset += 4;
@@ -155,17 +193,87 @@ function processResponseMessage(buffer: Buffer, offset: number, command: Command
             }
             break;
         case CommandType.DeleteBreakpoint:
+            break;
+    }
+
+    return offset;
+}
+
+function processResponseMessage(buffer: Buffer, offset: number): number {
+    const command = commandQueue.shift();
+    if (!command) {
+        vscode.window.showErrorMessage("RemedyBG: Critical Error! Received response for a command that is not set!");
+        // HACK: Temporary workaround
+        return 4096;
+    }
+
+    console.log(`Processed Response: ${CommandType[command.type]}`);
+    const code: CommandResult = buffer.readUInt16LE(offset);
+    offset += 2;
+
+    switch (code) {
+        case CommandResult.Ok:
+            offset = processResponseCommand(buffer, offset, command);
+            command.onSuccess?.();
+            break;
+        case CommandResult.InvalidCommand:
             {
-                const breakpointId = buffer.readInt32LE(offset);
-                offset += 4;
-                const vscodeId = breakpoints.get(breakpointId);
-                if (vscodeId) {
-                    breakpointsVsCode.delete(vscodeId);
-                }
-                breakpoints.delete(breakpointId);
+                vscode.window.showErrorMessage("RemedyBG: Invalid command!");
+            }
+            break;
+        case CommandResult.FailedOpeningFile:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Can not open file!");
+            }
+            break;
+        case CommandResult.BufferTooSmall:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Buffer too small!");
+            }
+            break;
+        case CommandResult.InvalidId:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Invalid Id!");
+            }
+            break;
+        case CommandResult.FailedSavingSession:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Failed saving session!");
+            }
+            break;
+        case CommandResult.FailedNoActiveConfig:
+            {
+                vscode.window.showErrorMessage("RemedyBG: No active config!");
+            }
+            break;
+        case CommandResult.Fail:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Failed command!");
+            }
+            break;
+        case CommandResult.Aborted:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Aborted!");
+            }
+            break;
+        case CommandResult.InvalidTargetState:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Invalid target state!");
+            }
+            break;
+        case CommandResult.InvalidBreakpointKind:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Invalid breakpoint kind!");
+            }
+            break;
+        case CommandResult.Unknown:
+            {
+                vscode.window.showErrorMessage("RemedyBG: Unknown error!");
             }
             break;
     }
+
+    return offset;
 }
 
 export function startSession(onConnect: () => void, onDisconnect: () => void) {
@@ -173,91 +281,35 @@ export function startSession(onConnect: () => void, onDisconnect: () => void) {
     const commandPipePath = PIPE_PREFIX + name;
     const eventPipePath = PIPE_PREFIX + name + "-events";
 
-    childProcess = exec(`remedybg --servername ${name}`, (error, stdout, stderr) => {
-        if (error) {
-            vscode.window.showErrorMessage("Received error while launching `remedybg.exe`. Error: " + error.message);
-            return;
-        }
-
-        if (stderr) {
-            vscode.window.showErrorMessage("Received error while launching `remedybg.exe`. Error: " + stderr);
-            return;
-        }
+    childProcess = spawn(`remedybg.exe`, ["--servername", name], { detached: true });
+    if (!childProcess) {
+        vscode.window.showErrorMessage("Could not start RemedyBG! Make sure installation path is correct or `remedybg.exe` is set in PATH.");
+    }
+    childProcess?.stdout?.on("data", (data) => {
+        console.log(`stdout: ${data}`);
     });
+
+    childProcess?.stderr?.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+    });
+
+    childProcess?.on("exit", (code) => {
+        console.log(`Child process exited with code ${code}`);
+    });
+    childProcess.unref();
 
     setTimeout(() => {
         const onReadOpts: net.OnReadOpts = {
             buffer: Buffer.alloc(4096),
             callback: (bytesWritten, readBuffer: Buffer) => {
-                const command = commandQueue.shift();
-                if (!command) {
-                    vscode.window.showErrorMessage("RemedyBG: Critical Error! Received response for a command that is not set!");
-                    return false;
+                let offset = 0;
+                console.log(`Received Response: Bytes(${bytesWritten})`);
+                while (bytesWritten > offset) {
+                    offset = processResponseMessage(readBuffer, offset);
                 }
 
-                let offset = 0;
-                const code: CommandResult = readBuffer.readUInt16LE(offset);
-                offset += 2;
-
-                switch (code) {
-                    case CommandResult.Ok:
-                        processResponseMessage(readBuffer, offset, command);
-                        break;
-                    case CommandResult.InvalidCommand:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Invalid command!");
-                        }
-                        break;
-                    case CommandResult.FailedOpeningFile:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Can not open file!");
-                        }
-                        break;
-                    case CommandResult.BufferTooSmall:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Buffer too small!");
-                        }
-                        break;
-                    case CommandResult.InvalidId:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Invalid Id!");
-                        }
-                        break;
-                    case CommandResult.FailedSavingSession:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Failed saving session!");
-                        }
-                        break;
-                    case CommandResult.FailedNoActiveConfig:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: No active config!");
-                        }
-                        break;
-                    case CommandResult.Fail:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Failed command!");
-                        }
-                        break;
-                    case CommandResult.Aborted:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Aborted!");
-                        }
-                        break;
-                    case CommandResult.InvalidTargetState:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Invalid target state!");
-                        }
-                        break;
-                    case CommandResult.InvalidBreakpointKind:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Invalid breakpoint kind!");
-                        }
-                        break;
-                    case CommandResult.Unknown:
-                        {
-                            vscode.window.showErrorMessage("RemedyBG: Unknown error!");
-                        }
-                        break;
+                if (bytesWritten !== offset) {
+                    console.log(`Invalid Response: No command found, bytes written(${bytesWritten}) \n${readBuffer.subarray(0, bytesWritten)}`);
                 }
                 return true;
             },
@@ -292,6 +344,7 @@ export function startSession(onConnect: () => void, onDisconnect: () => void) {
             callback: (bytesWritten, readBuffer: Buffer) => {
                 let offset = 0;
                 const code: EventType = readBuffer.readInt16LE();
+                console.log(`Received Event: ${EventType[code]}`);
                 offset += 2;
                 switch (code) {
                     case EventType.BreakpointAdded:
@@ -351,13 +404,9 @@ export function startSession(onConnect: () => void, onDisconnect: () => void) {
 }
 
 export function stopSession() {
-    client?.destroy();
-    eventClient?.destroy();
-    if (childProcess?.pid) {
-        process.kill(childProcess.pid);
-    }
-    childProcess?.kill("SIGKILL");
-    client = undefined;
-    eventClient = undefined;
-    client = undefined;
+    sendCommand({
+        type: CommandType.CommandExitDebugger,
+        debugBehaviour: DebuggingTargetBehavior.IfDebuggingTargetStopDebugging,
+        sessionBehaviour: ModifiedSessionBehavior.IfSessionIsModifiedSaveAndContinue,
+    });
 }

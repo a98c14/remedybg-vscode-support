@@ -39,6 +39,17 @@ export enum CommandType {
     AddWatch = 701,
 }
 
+export enum ModifiedSessionBehavior {
+    IfSessionIsModifiedSaveAndContinue = 1,
+    IfSessionIsModifiedContinueWithoutSaving = 2,
+    IfSessionIsModifiedAbortCommand = 3,
+}
+
+export enum DebuggingTargetBehavior {
+    IfDebuggingTargetStopDebugging = 1,
+    IfDebuggingTargetAbortCommand = 2,
+}
+
 export enum BreakpointKind {
     FunctionName = 1,
     FilenameLine = 2,
@@ -141,9 +152,15 @@ type GetBreakpointCommandArg = {
 
 type CommandExitDebuggerCommandArg = {
     type: CommandType.CommandExitDebugger;
+    debugBehaviour: DebuggingTargetBehavior;
+    sessionBehaviour: ModifiedSessionBehavior;
 };
 
-export type CommandArgs =
+type CommandCallbacks = {
+    onSuccess?: () => void;
+};
+
+type CommandArgsInternal =
     | RemoveBreakpointAtFilenameLineCommandArg
     | AddBreakpointAtFilenameLineCommandArg
     | StartDebuggingCommandArg
@@ -155,3 +172,5 @@ export type CommandArgs =
     | ContinueExecutionCommandArg
     | GetBreakpointCommandArg
     | CommandExitDebuggerCommandArg;
+
+export type CommandArgs = CommandArgsInternal & CommandCallbacks;

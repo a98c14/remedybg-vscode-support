@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { CommandType } from "./remedybg";
+import { CommandType, DebuggingTargetBehavior, ModifiedSessionBehavior } from "./remedybg";
 import * as command from "./command";
 
 let remedybgStatusBar: vscode.StatusBarItem;
@@ -89,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     const exitCommand = vscode.commands.registerCommand(exitCommandId, () => {
-        command.sendCommand({ type: CommandType.CommandExitDebugger });
+        command.sendCommand({ type: CommandType.CommandExitDebugger, debugBehaviour: DebuggingTargetBehavior.IfDebuggingTargetStopDebugging, sessionBehaviour: ModifiedSessionBehavior.IfSessionIsModifiedSaveAndContinue });
     });
 
     const stopDebuggingCommand = vscode.commands.registerCommand(stopDebuggingCommandId, () => {
@@ -127,11 +127,8 @@ export function activate(context: vscode.ExtensionContext) {
             const breakpointPath = breakpoint.location.uri.fsPath;
             const breakpointLine = breakpoint.location.range.start.line + 1;
             command.sendCommand({ type: CommandType.AddBreakpointAtFilenameLine, filename: breakpointPath, lineNumber: breakpointLine, vscodeId: breakpoint.id });
-            console.log("goto", configStore.goToLineWhenBreakpointUpdated);
             if (configStore.goToLineWhenBreakpointUpdated) {
-                setTimeout(() => {
-                    command.sendCommand({ type: CommandType.GotoFileAtLine, filename: breakpointPath, lineNumber: breakpointLine });
-                }, 100);
+                command.sendCommand({ type: CommandType.GotoFileAtLine, filename: breakpointPath, lineNumber: breakpointLine });
             }
         }
 
@@ -157,5 +154,5 @@ export function activate(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated
 export function deactivate() {
-    vscode.commands.executeCommand(stopSessionCommandId);
+    command.stopSession();
 }
