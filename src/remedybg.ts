@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
 import { TextDecoder, TextEncoder } from "util";
 
 export enum TargetState {
@@ -367,7 +366,6 @@ export function readCommand(type: CommandType, buffer: Buffer, offset: number): 
             {
                 let breakpoint;
                 [breakpoint, offset] = readBreakpoint(buffer, offset);
-
                 data = {
                     breakpoint: breakpoint,
                 };

@@ -1,118 +1,66 @@
 import * as vscode from "vscode";
 import * as command from "./command";
+import { COMMAND_ID, configStore, EXTENSION_ID, loadConfiguration } from "./configuration";
 import { CommandType, DebuggingTargetBehavior, ModifiedSessionBehavior } from "./remedybg";
 
-let remedybgStatusBar: vscode.StatusBarItem;
-const remedybgDisconnectedStatusText = "RemedyBG: Disconnected";
-const remedybgConnectedStatusText = "RemedyBG: Connected";
-const extensionId = "remedybg-support";
-
-/* Options */
-const goToLineOnNewBreakpointConfigId = "goToLineOnNewBreakpoint";
-
-/* Command Ids */
-const askStartSessionCommandId = "remedybg-support.ask_start_session";
-const askStopSessionCommandId = "remedybg-support.ask_stop_session";
-const startSessionCommandId = "remedybg-support.start_session";
-const stopSessionCommandId = "remedybg-support.stop_session";
-const startDebuggingCommandId = "remedybg-support.start_debugging";
-const stopDebuggingCommandId = "remedybg-support.stop_debugging";
-const stepIntoCommandId = "remedybg-support.step_into";
-const stepOverCommandId = "remedybg-support.step_over";
-const stepOutCommandId = "remedybg-support.step_out";
-const continueExecutionCommandId = "remedybg-support.continue_execution";
-const goToFileAtLineCommandId = "remedybg-support.go_to_file_at_line";
-const exitCommandId = "remedybg-support.exit";
-
-type ConfigStore = {
-    goToLineWhenBreakpointUpdated: boolean;
-};
-
-let configStore: ConfigStore = {
-    goToLineWhenBreakpointUpdated: false,
-};
-
-function loadConfiguration() {
-    const configuration = vscode.workspace.getConfiguration(extensionId);
-    configStore.goToLineWhenBreakpointUpdated = configuration.get(goToLineOnNewBreakpointConfigId) ?? false;
-}
-
 export function activate(context: vscode.ExtensionContext) {
-    remedybgStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    remedybgStatusBar.command = askStartSessionCommandId;
-    remedybgStatusBar.text = remedybgDisconnectedStatusText;
-    remedybgStatusBar.show();
-
     loadConfiguration();
     vscode.workspace.onDidChangeConfiguration((e) => {
-        if (!e.affectsConfiguration(extensionId)) {
+        if (!e.affectsConfiguration(EXTENSION_ID)) {
             return;
         }
         loadConfiguration();
     });
 
-    const askStartSessionCommand = vscode.commands.registerCommand(askStartSessionCommandId, () => {
+    const askStartSessionCommand = vscode.commands.registerCommand(COMMAND_ID.ASK_START_SESSION, () => {
         vscode.window.showInformationMessage("RemedyBG session is not alive. Would you like to start a new session?", "Yes, start a new session").then(() => {
-            vscode.commands.executeCommand(startSessionCommandId);
+            vscode.commands.executeCommand(COMMAND_ID.START_SESSION);
         });
     });
 
-    const askStopSessionCommand = vscode.commands.registerCommand(askStopSessionCommandId, () => {
+    const askStopSessionCommand = vscode.commands.registerCommand(COMMAND_ID.ASK_STOP_SESSION, () => {
         vscode.window.showInformationMessage("Are you sure you want to stop the existing RemedyBG session?", "Yes, stop the session").then(() => {
-            vscode.commands.executeCommand(stopSessionCommandId);
+            vscode.commands.executeCommand(COMMAND_ID.STOP_SESSION);
         });
     });
 
-    const startSessionCommand = vscode.commands.registerCommand(startSessionCommandId, () => {
-        command.startSession(
-            () => {
-                vscode.window.showInformationMessage("Established connection with RemedyBG");
-                remedybgStatusBar.text = remedybgConnectedStatusText;
-                remedybgStatusBar.command = askStopSessionCommandId;
-            },
-            () => {
-                vscode.window.showInformationMessage("RemedyBG has been shut down. Closing the connection.");
-                remedybgStatusBar.text = remedybgDisconnectedStatusText;
-                remedybgStatusBar.command = askStartSessionCommandId;
-            }
-        );
+    const startSessionCommand = vscode.commands.registerCommand(COMMAND_ID.START_SESSION, () => {
+        command.startSession();
     });
 
-    const stopSessionCommand = vscode.commands.registerCommand(stopSessionCommandId, () => {
+    const stopSessionCommand = vscode.commands.registerCommand(COMMAND_ID.STOP_SESSION, () => {
         command.stopSession();
-        remedybgStatusBar.text = remedybgDisconnectedStatusText;
-        remedybgStatusBar.command = askStartSessionCommandId;
     });
 
-    const startDebuggingCommand = vscode.commands.registerCommand(startDebuggingCommandId, () => {
+    const startDebuggingCommand = vscode.commands.registerCommand(COMMAND_ID.START_DEBUGGING, () => {
         command.sendCommand({ type: CommandType.StartDebugging });
     });
 
-    const exitCommand = vscode.commands.registerCommand(exitCommandId, () => {
+    const exitCommand = vscode.commands.registerCommand(COMMAND_ID.EXIT, () => {
         command.sendCommand({ type: CommandType.CommandExitDebugger, debugBehaviour: DebuggingTargetBehavior.IfDebuggingTargetStopDebugging, sessionBehaviour: ModifiedSessionBehavior.IfSessionIsModifiedSaveAndContinue });
     });
 
-    const stopDebuggingCommand = vscode.commands.registerCommand(stopDebuggingCommandId, () => {
+    const stopDebuggingCommand = vscode.commands.registerCommand(COMMAND_ID.STOP_DEBUGGING, () => {
         command.sendCommand({ type: CommandType.StopDebugging });
     });
 
-    const stepIntoCommand = vscode.commands.registerCommand(stepIntoCommandId, () => {
+    const stepIntoCommand = vscode.commands.registerCommand(COMMAND_ID.STEP_INTO, () => {
         command.sendCommand({ type: CommandType.StepIntoByLine });
     });
 
-    const stepOverCommand = vscode.commands.registerCommand(stepOverCommandId, () => {
+    const stepOverCommand = vscode.commands.registerCommand(COMMAND_ID.STEP_OVER, () => {
         command.sendCommand({ type: CommandType.StepOverByLine });
     });
 
-    const stepOutCommand = vscode.commands.registerCommand(stepOutCommandId, () => {
+    const stepOutCommand = vscode.commands.registerCommand(COMMAND_ID.STEP_OUT, () => {
         command.sendCommand({ type: CommandType.StepOut });
     });
 
-    const continueExecutionCommand = vscode.commands.registerCommand(continueExecutionCommandId, () => {
+    const continueExecutionCommand = vscode.commands.registerCommand(COMMAND_ID.CONTINUE_EXECUTION, () => {
         command.sendCommand({ type: CommandType.ContinueExecution });
     });
 
-    const goToFileAtLineCommand = vscode.commands.registerCommand(goToFileAtLineCommandId, () => {
+    const goToFileAtLineCommand = vscode.commands.registerCommand(COMMAND_ID.GO_TO_FILE_AT_LINE, () => {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
             return;
