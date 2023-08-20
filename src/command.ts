@@ -11,6 +11,7 @@ let client: net.Socket | undefined = undefined;
 let eventClient: net.Socket | undefined = undefined;
 let childProcess: ChildProcess | undefined = undefined;
 let remedybgStatusBar: vscode.StatusBarItem;
+let targetState: rbg.TargetState = rbg.TargetState.None;
 
 function generateRandomString(): string {
     return (Math.random() + 1).toString(36).substring(7);

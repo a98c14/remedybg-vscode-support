@@ -94,13 +94,13 @@ export enum EventType {
     TargetAttached = 102,
     TargetDetached = 103,
     TargetContinued = 104,
+    SourceLocationChanged = 200,
     KindBreakpointHit = 600,
     KindBreakpointResolved = 601,
-    OutputDebugString = 800,
     BreakpointAdded = 602,
     BreakpointModified = 603,
     BreakpointRemoved = 604,
-    SourceLocationChanged = 200,
+    OutputDebugString = 800,
 }
 
 /* Breakpoint Types */
