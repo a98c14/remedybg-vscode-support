@@ -45,7 +45,7 @@ export function sendCommand(command: rbg.CommandArgs) {
     if (!client || client.destroyed) {
         vscode.window.showInformationMessage(`RemedyBG connection is not live. Would you like to start a new session?`, "Yes", "No").then((option) => {
             if (option === "Yes") {
-                vscode.commands.executeCommand("remedybg-support.start_session");
+                vscode.commands.executeCommand("remedybg.start_session");
             }
         });
         return;

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-export const EXTENSION_ID = "remedybg-support";
+export const EXTENSION_ID = "remedybg";
 
 export const STATUS_BAR_MESSAGE = {
     DISCONNECTED: "RemedyBG: Disconnected",
@@ -9,18 +9,18 @@ export const STATUS_BAR_MESSAGE = {
 };
 
 export const COMMAND_ID = {
-    ASK_START_SESSION: "remedybg-support.ask_start_session",
-    ASK_STOP_SESSION: "remedybg-support.ask_stop_session",
-    START_SESSION: "remedybg-support.start_session",
-    STOP_SESSION: "remedybg-support.stop_session",
-    START_DEBUGGING: "remedybg-support.start_debugging",
-    STOP_DEBUGGING: "remedybg-support.stop_debugging",
-    STEP_INTO: "remedybg-support.step_into",
-    STEP_OVER: "remedybg-support.step_over",
-    STEP_OUT: "remedybg-support.step_out",
-    CONTINUE_EXECUTION: "remedybg-support.continue_execution",
-    GO_TO_FILE_AT_LINE: "remedybg-support.go_to_file_at_line",
-    EXIT: "remedybg-support.exit",
+    ASK_START_SESSION: "remedybg.ask_start_session",
+    ASK_STOP_SESSION: "remedybg.ask_stop_session",
+    START_SESSION: "remedybg.start_session",
+    STOP_SESSION: "remedybg.stop_session",
+    START_DEBUGGING: "remedybg.start_debugging",
+    STOP_DEBUGGING: "remedybg.stop_debugging",
+    STEP_INTO: "remedybg.step_into",
+    STEP_OVER: "remedybg.step_over",
+    STEP_OUT: "remedybg.step_out",
+    CONTINUE_EXECUTION: "remedybg.continue_execution",
+    GO_TO_FILE_AT_LINE: "remedybg.go_to_file_at_line",
+    EXIT: "remedybg.exit",
 };
 
 const CONFIG_ID = {

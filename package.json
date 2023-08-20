@@ -1,7 +1,15 @@
 {
-    "name": "remedybg-support",
+    "name": "remedybg",
     "displayName": "RemedyBG Support",
     "description": "RemedyBG debugger support for VS Code.",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/a98c14/remedybg-vscode-support.git"
+    },
+    "publisher": "Selim Yesilkaya",
+    "preview": true,
+    "license": "MIT",
+    "icon": "",
     "author": {
         "name": "Selim Yesilkaya",
         "email": "selimyesilkaya@gmail.com"
@@ -11,59 +19,62 @@
         "vscode": "^1.81.0"
     },
     "categories": [
-        "Other"
+        "Other",
+        "Programming Languages",
+        "Debuggers"
     ],
     "main": "./out/extension.js",
     "contributes": {
         "configuration": {
             "title": "RemedyBG",
             "properties": {
-                "remedybg-support.goToLineOnNewBreakpoint": {
+                "remedybg.goToLineOnNewBreakpoint": {
                     "type": "boolean",
                     "default": false,
+                    "title": "RemedyBG: Go to line on new breakpoint",
                     "description": "On RemedyBG, go to the line of the newly added breakpoint when a new breakpoint is insterted."
                 }
             }
         },
         "commands": [
             {
-                "command": "remedybg-support.start_session",
+                "command": "remedybg.start_session",
                 "title": "RemedyBG: Start Session"
             },
             {
-                "command": "remedybg-support.stop_session",
+                "command": "remedybg.stop_session",
                 "title": "RemedyBG: Stop Session"
             },
             {
-                "command": "remedybg-support.start_debugging",
+                "command": "remedybg.start_debugging",
                 "title": "RemedyBG: Start Debugging"
             },
             {
-                "command": "remedybg-support.stop_debugging",
+                "command": "remedybg.stop_debugging",
                 "title": "RemedyBG: Stop Debugging"
             },
             {
-                "command": "remedybg-support.go_to_file_at_line",
+                "command": "remedybg.go_to_file_at_line",
                 "title": "RemedyBG: Go to line"
             },
             {
-                "command": "remedybg-support.step_into",
+                "command": "remedybg.step_into",
                 "title": "RemedyBG: Step Into"
             },
             {
-                "command": "remedybg-support.step_over",
+                "command": "remedybg.step_over",
                 "title": "RemedyBG: Step Over"
             },
             {
-                "command": "remedybg-support.step_out",
+                "command": "remedybg.step_out",
                 "title": "RemedyBG: Step Out"
             },
             {
-                "command": "remedybg-support.continue_execution",
+                "command": "remedybg.continue_execution",
                 "title": "RemedyBG: Continue Execution"
             },
             {
-                "command": "remedybg-support.exit",
+                "command": "remedybg.exit",
                 "title": "RemedyBG: Exit"
             }
         ]
@@ -72,9 +83,7 @@
         "vscode:prepublish": "yarn run compile",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "pretest": "yarn run compile && yarn run lint",
-        "lint": "eslint src --ext ts",
-        "test": "node ./out/test/runTest.js"
+        "lint": "eslint src --ext ts"
     },
     "devDependencies": {
         "@types/vscode": "^1.81.0",
