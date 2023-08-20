@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { TextDecoder, TextEncoder } from "util";
 
 export enum TargetState {
     None = 1,
@@ -103,6 +104,39 @@ export enum EventType {
     SourceLocationChanged = 200,
 }
 
+/* Breakpoint Types */
+type BreakpointFunction = {
+    kind: BreakpointKind.FunctionName;
+    functionName: string;
+    overloadId: number;
+};
+
+type BreakpointFilenameLine = {
+    kind: BreakpointKind.FilenameLine;
+    fileName: string;
+    line: number;
+};
+
+type BreakpointAddress = {
+    kind: BreakpointKind.Address;
+    address: BigInt;
+};
+
+type BreakpointProcessor = {
+    kind: BreakpointKind.Processor;
+};
+
+type RemedyBreakpointKindData = BreakpointFunction | BreakpointFilenameLine | BreakpointAddress | BreakpointProcessor;
+
+type RemedyBreakpoint = {
+    id: number;
+    enabled: boolean;
+    moduleName: string;
+    conditionExpr: string;
+    kindData: RemedyBreakpointKindData | null;
+};
+
+/* Command Args */
 type AddBreakpointAtFilenameLineCommandArg = {
     type: CommandType.AddBreakpointAtFilenameLine;
     filename: string;
@@ -110,8 +144,9 @@ type AddBreakpointAtFilenameLineCommandArg = {
     vscodeId: string;
 };
 
-type RemoveBreakpointAtFilenameLineCommandArg = {
+type DeleteBreakpointCommandArg = {
     type: CommandType.DeleteBreakpoint;
+    breakpointId: number;
     vscodeId: string;
 };
 
@@ -156,12 +191,8 @@ type CommandExitDebuggerCommandArg = {
     sessionBehaviour: ModifiedSessionBehavior;
 };
 
-type CommandCallbacks = {
-    onSuccess?: () => void;
-};
-
-type CommandArgsInternal =
-    | RemoveBreakpointAtFilenameLineCommandArg
+export type CommandArgs =
+    | DeleteBreakpointCommandArg
     | AddBreakpointAtFilenameLineCommandArg
     | StartDebuggingCommandArg
     | StopDebuggingCommandArg
@@ -173,4 +204,187 @@ type CommandArgsInternal =
     | GetBreakpointCommandArg
     | CommandExitDebuggerCommandArg;
 
-export type CommandArgs = CommandArgsInternal & CommandCallbacks;
+/* Command Return */
+export type AddBreakpointAtFilenameLineCommandReturn = {
+    breakpointId: number;
+};
+
+export type GetBreakpointCommandReturn = {
+    breakpoint: RemedyBreakpoint;
+};
+
+export type CommandReturn = AddBreakpointAtFilenameLineCommandReturn | GetBreakpointCommandReturn;
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function writeString(str: string, buffer: Buffer, offset: number): number {
+    buffer.writeUInt16LE(str.length, offset);
+    const { written } = encoder.encodeInto(str, buffer.subarray(offset + 2));
+    return offset + written + 2;
+}
+
+function readString(buffer: Buffer, offset: number): [str: string, offset: number] {
+    const length = buffer.readUInt16LE(offset);
+    offset += 2;
+    const str = decoder.decode(buffer.subarray(offset, offset + length));
+    offset += length;
+    return [str, offset];
+}
+
+export function writeCommand(args: CommandArgs, buffer: Buffer): number {
+    let offset = buffer.writeUInt16LE(args.type);
+    switch (args.type) {
+        case CommandType.CommandExitDebugger:
+            {
+                offset = buffer.writeUInt8(args.debugBehaviour, offset);
+                offset = buffer.writeUInt8(args.sessionBehaviour, offset);
+            }
+            break;
+        case CommandType.GetBreakpoint:
+            {
+                offset += buffer.writeUInt32LE(args.breakpointId, offset);
+            }
+            break;
+        case CommandType.AddBreakpointAtFilenameLine:
+            {
+                offset = writeString(args.filename, buffer, offset);
+                offset = buffer.writeUInt32LE(args.lineNumber, offset);
+                offset = buffer.writeUInt16LE(0, offset);
+            }
+            break;
+        case CommandType.DeleteBreakpoint:
+            {
+                offset = buffer.writeUInt32LE(args.breakpointId, offset);
+                offset = buffer.writeUInt16LE(0, offset);
+            }
+            break;
+        case CommandType.GotoFileAtLine:
+            {
+                offset = writeString(args.filename, buffer, offset);
+                offset = buffer.writeUInt32LE(args.lineNumber, offset);
+                offset = buffer.writeUInt16LE(0, offset);
+            }
+            break;
+        case CommandType.StartDebugging:
+            {
+                offset = buffer.writeUInt8(0, offset);
+            }
+            break;
+    }
+    return offset;
+}
+
+function readBreakpointKindData(buffer: Buffer, offset: number): [breakpointKind: RemedyBreakpointKindData | null, offset: number] {
+    let breakpointKind: RemedyBreakpointKindData | null;
+
+    const kind: BreakpointKind = buffer.readInt8(offset);
+    offset += 1;
+    switch (kind) {
+        case BreakpointKind.FunctionName:
+            {
+                let functionName;
+                [functionName, offset] = readString(buffer, offset);
+                const overloadId = buffer.readUInt32LE(offset);
+                offset += 4;
+                breakpointKind = { kind: BreakpointKind.FunctionName, functionName: functionName, overloadId: overloadId };
+            }
+            break;
+        case BreakpointKind.FilenameLine:
+            {
+                let filename;
+                [filename, offset] = readString(buffer, offset);
+                const line = buffer.readUInt32LE(offset);
+                offset += 4;
+                breakpointKind = { kind: BreakpointKind.FilenameLine, fileName: filename, line: line };
+            }
+            break;
+        case BreakpointKind.Address:
+            {
+                const address = buffer.readBigUint64LE(offset);
+                offset += 8;
+                breakpointKind = { kind: BreakpointKind.Address, address: address };
+            }
+            break;
+        case BreakpointKind.Processor:
+            {
+                let addressExpr;
+                [addressExpr, offset] = readString(buffer, offset);
+                const numBytes = buffer.readUint8(offset);
+                offset += 1;
+                const accessKind = buffer.readUint8(offset);
+                offset += 1;
+                breakpointKind = { kind: BreakpointKind.Processor };
+            }
+            break;
+        default:
+            breakpointKind = null;
+    }
+
+    return [breakpointKind, offset];
+}
+
+function readBreakpoint(buffer: Buffer, offset: number): [breakpoint: RemedyBreakpoint, offset: number] {
+    const breakpointId = buffer.readInt32LE(offset);
+    offset += 4;
+
+    const enabled = buffer.readUInt8(offset);
+    offset += 1;
+
+    let moduleName;
+    [moduleName, offset] = readString(buffer, offset);
+
+    let conditionExpr;
+    [conditionExpr, offset] = readString(buffer, offset);
+
+    let breakpointKind;
+    [breakpointKind, offset] = readBreakpointKindData(buffer, offset);
+
+    const breakpoint: RemedyBreakpoint = {
+        id: breakpointId,
+        conditionExpr: conditionExpr,
+        enabled: enabled > 0,
+        moduleName: moduleName,
+        kindData: breakpointKind,
+    };
+
+    return [breakpoint, offset];
+}
+
+export function readCommand(type: CommandType, buffer: Buffer, offset: number): [result: CommandResult, data: CommandReturn | null, offset: number] {
+    const result: CommandResult = buffer.readUInt16LE(offset);
+    offset += 2;
+    let data: CommandReturn | null;
+    switch (type) {
+        case CommandType.GotoFileAtLine:
+            {
+                const fileId = buffer.readUInt32LE(offset);
+                offset += 4;
+                data = null;
+            }
+            break;
+        case CommandType.GetBreakpoint:
+            {
+                let breakpoint;
+                [breakpoint, offset] = readBreakpoint(buffer, offset);
+
+                data = {
+                    breakpoint: breakpoint,
+                };
+            }
+            break;
+        case CommandType.AddBreakpointAtFilenameLine:
+            {
+                const breakpointId = buffer.readInt32LE(offset);
+                offset += 4;
+                data = {
+                    breakpointId: breakpointId,
+                };
+            }
+            break;
+        default:
+            data = null;
+    }
+
+    return [result, data, offset];
+}

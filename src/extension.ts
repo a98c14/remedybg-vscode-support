@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { CommandType, DebuggingTargetBehavior, ModifiedSessionBehavior } from "./remedybg";
 import * as command from "./command";
+import { CommandType, DebuggingTargetBehavior, ModifiedSessionBehavior } from "./remedybg";
 
 let remedybgStatusBar: vscode.StatusBarItem;
 const remedybgDisconnectedStatusText = "RemedyBG: Disconnected";
@@ -126,7 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
             const breakpoint = e.added[i] as vscode.SourceBreakpoint;
             const breakpointPath = breakpoint.location.uri.fsPath;
             const breakpointLine = breakpoint.location.range.start.line + 1;
-            command.sendCommand({ type: CommandType.AddBreakpointAtFilenameLine, filename: breakpointPath, lineNumber: breakpointLine, vscodeId: breakpoint.id });
+            command.addBreakpointAtFilenameLine(breakpoint.id, breakpointPath, breakpointLine);
             if (configStore.goToLineWhenBreakpointUpdated) {
                 command.sendCommand({ type: CommandType.GotoFileAtLine, filename: breakpointPath, lineNumber: breakpointLine });
             }
@@ -134,7 +134,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         for (let i = 0; i < e.removed.length; i++) {
             const breakpoint = e.removed[i] as vscode.SourceBreakpoint;
-            command.sendCommand({ type: CommandType.DeleteBreakpoint, vscodeId: breakpoint.id });
+            command.deleteBreakpoint(breakpoint.id);
         }
     });
 
