@@ -1,8 +1,8 @@
 import { ChildProcess, spawn } from "child_process";
 import * as net from "net";
 import * as vscode from "vscode";
+import { COMMAND_ID, STATUS_BAR_MESSAGE, configStore } from "./configuration";
 import * as rbg from "./remedybg";
-import { COMMAND_ID, STATUS_BAR_MESSAGE } from "./configuration";
 
 const PIPE_PREFIX = "\\\\.\\pipe\\";
 const writeBuffer = Buffer.alloc(4096);
@@ -34,6 +34,16 @@ export function addBreakpointAtFilenameLine(vscodeId: string, filename: string, 
     sendCommand({ type: rbg.CommandType.AddBreakpointAtFilenameLine, filename, lineNumber, vscodeId });
 }
 
+export function modifyBreakpoint(vscodeId: string, enabled: boolean) {
+    const breakpointId = breakpointIds_VSC_RBG.get(vscodeId);
+    if (!breakpointId) {
+        console.warn("Modified breakpoint doesn't exist in RemedyBG!");
+        return;
+    }
+
+    sendCommand({ type: rbg.CommandType.EnableBreakpoint, breakpointId, enabled });
+}
+
 export function deleteBreakpoint(vscodeId: string) {
     const breakpointId = breakpointIds_VSC_RBG.get(vscodeId);
     if (!breakpointId) {
@@ -43,6 +53,16 @@ export function deleteBreakpoint(vscodeId: string) {
     breakpointIds_RBG_VSC.delete(breakpointId);
     breakpointIds_VSC_RBG.delete(vscodeId);
     sendCommand({ type: rbg.CommandType.DeleteBreakpoint, breakpointId, vscodeId });
+}
+
+export function deleteAllBreakpoints() {
+    breakpointIds_RBG_VSC.clear();
+    breakpointIds_VSC_RBG.clear();
+    sendCommand({ type: rbg.CommandType.DeleteAllBreakpoints });
+}
+
+export function getAllBreakpoints() {
+    sendCommand({ type: rbg.CommandType.GetBreakpoints });
 }
 
 export function sendCommand(command: rbg.CommandArgs) {
@@ -103,6 +123,18 @@ function getBreakpointLocation(vscodeId: string): vscode.Location | null {
     return null;
 }
 
+function getBreakpointIdAt(filename: string, line: number): string | null {
+    const bps = vscode.debug.breakpoints;
+    for (let i = 0; i < bps.length; i++) {
+        const bp = bps[i];
+        if (bp instanceof vscode.SourceBreakpoint && bp.location.uri.fsPath === filename && bp.location.range.start.line === line - 1) {
+            return bp.id;
+        }
+    }
+
+    return null;
+}
+
 function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
     let offset = 0;
     console.log(`Received Response: Bytes(${bytesWritten})`);
@@ -132,6 +164,43 @@ function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
                     const { breakpointId } = data as rbg.AddBreakpointAtFilenameLineCommandReturn;
                     breakpointIds_RBG_VSC.set(breakpointId, command.vscodeId);
                     breakpointIds_VSC_RBG.set(command.vscodeId, breakpointId);
+                }
+                break;
+            case rbg.CommandType.GetBreakpoints:
+                {
+                    const { count, breakpoints } = data as rbg.GetBreakpointsCommandReturn;
+                    breakpointIds_RBG_VSC.clear();
+                    breakpointIds_VSC_RBG.clear();
+                    const breakpointsToAdd: vscode.Breakpoint[] = [];
+                    for (let i = 0; i < count; i++) {
+                        const breakpoint = breakpoints[i];
+                        if (breakpointIds_RBG_VSC.has(breakpoint.id)) {
+                            continue;
+                        }
+
+                        switch (breakpoint.kindData?.kind) {
+                            case rbg.BreakpointKind.FilenameLine:
+                                {
+                                    const filename = breakpoint.kindData.fileName;
+                                    const line = breakpoint.kindData.line;
+                                    const existingBreakpoint = getBreakpointIdAt(filename, line);
+                                    if (existingBreakpoint) {
+                                        breakpointIds_RBG_VSC.set(breakpoint.id, existingBreakpoint);
+                                        breakpointIds_VSC_RBG.set(existingBreakpoint, breakpoint.id);
+                                    } else {
+                                        const vscodeBP: vscode.SourceBreakpoint = new vscode.SourceBreakpoint({ uri: vscode.Uri.file(filename), range: new vscode.Range(line - 1, 0, line - 1, 0) }, true);
+                                        breakpointIds_RBG_VSC.set(breakpoint.id, vscodeBP.id);
+                                        breakpointIds_VSC_RBG.set(vscodeBP.id, breakpoint.id);
+                                        breakpointsToAdd.push(vscodeBP);
+                                    }
+                                }
+                                break;
+                        }
+                    }
+
+                    const breakpointsToRemove = vscode.debug.breakpoints.filter((x) => !breakpointIds_VSC_RBG.has(x.id));
+                    vscode.debug.addBreakpoints(breakpointsToAdd);
+                    vscode.debug.removeBreakpoints(breakpointsToRemove);
                 }
                 break;
             case rbg.CommandType.GetBreakpoint:
@@ -188,6 +257,7 @@ function processEvent(bytesWritten: number, readBuffer: Buffer): boolean {
         case rbg.EventType.ExitProcess:
             remedybgStatusBar.text = STATUS_BAR_MESSAGE.IDLE;
             break;
+        case rbg.EventType.BreakpointModified:
         case rbg.EventType.BreakpointAdded:
             {
                 const breakpointId = readBuffer.readInt32LE(offset);
@@ -270,6 +340,11 @@ function processEvent(bytesWritten: number, readBuffer: Buffer): boolean {
 }
 
 export function startSession() {
+    if (client && !client.destroyed) {
+        vscode.window.showInformationMessage("RemedyBG: Session is already active. Close the existing session before starting a new one.");
+        return;
+    }
+
     const name = vscode.workspace.name + "_" + generateRandomString();
     const commandPipePath = PIPE_PREFIX + name;
     const eventPipePath = PIPE_PREFIX + name + "-events";
@@ -310,10 +385,9 @@ export function startSession() {
             vscode.window.showInformationMessage("Established connection with RemedyBG");
             remedybgStatusBar.text = STATUS_BAR_MESSAGE.IDLE;
             remedybgStatusBar.command = COMMAND_ID.ASK_STOP_SESSION;
-        });
-
-        client.on("data", (data) => {
-            vscode.window.showInformationMessage("RECEIVED DATA MESSAGE. SHOULD NOT HAPPEN!");
+            if (configStore.syncBreakpointsAtSessionStart) {
+                getAllBreakpoints();
+            }
         });
 
         client.on("end", () => {
@@ -342,10 +416,6 @@ export function startSession() {
             console.log(`RemedyBG event connection established successfully.`);
         });
 
-        eventClient.on("data", (data) => {
-            vscode.window.showInformationMessage("RECEIVED DATA MESSAGE. SHOULD NOT HAPPEN!");
-        });
-
         eventClient.on("end", () => {
             console.log(`RemedyBG event has been shut down. Closing the connection.`);
             eventClient?.destroy();
@@ -359,6 +429,10 @@ export function startSession() {
 }
 
 export function stopSession() {
+    if (!client || client.destroyed) {
+        vscode.window.showInformationMessage("RemedyBG: Session is not active.");
+        return;
+    }
     childProcess?.kill();
     sendCommand({
         type: rbg.CommandType.CommandExitDebugger,

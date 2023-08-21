@@ -58,6 +58,10 @@
                 "title": "RemedyBG: Stop Session"
             },
             {
+                "command": "remedybg.sync_breakpoints",
+                "title": "RemedyBG: Sync Breakpoints"
+            },
+            {
                 "command": "remedybg.start_debugging",
                 "title": "RemedyBG: Start Debugging"
             },

@@ -153,6 +153,10 @@ type DeleteBreakpointCommandArg = {
     vscodeId: string;
 };
 
+type DeleteAllBreakpointsCommandArg = {
+    type: CommandType.DeleteAllBreakpoints;
+};
+
 type StartDebuggingCommandArg = {
     type: CommandType.StartDebugging;
 };
@@ -179,6 +183,10 @@ type ContinueExecutionCommandArg = {
 
 type BreakExecutionCommandArg = {
     type: CommandType.BreakExecution;
+};
+
+type GetBreakpointsCommandArg = {
+    type: CommandType.GetBreakpoints;
 };
 
 type GotoFileAtLineCommandArg = {
@@ -217,7 +225,9 @@ export type CommandArgs =
     | GetBreakpointCommandArg
     | CommandExitDebuggerCommandArg
     | EnableBreakpointCommandArg
-    | BreakExecutionCommandArg;
+    | BreakExecutionCommandArg
+    | DeleteAllBreakpointsCommandArg
+    | GetBreakpointsCommandArg;
 
 /* Command Return */
 export type AddBreakpointAtFilenameLineCommandReturn = {
@@ -228,7 +238,12 @@ export type GetBreakpointCommandReturn = {
     breakpoint: RemedyBreakpoint;
 };
 
-export type CommandReturn = AddBreakpointAtFilenameLineCommandReturn | GetBreakpointCommandReturn;
+export type GetBreakpointsCommandReturn = {
+    count: number;
+    breakpoints: RemedyBreakpoint[];
+};
+
+export type CommandReturn = AddBreakpointAtFilenameLineCommandReturn | GetBreakpointCommandReturn | GetBreakpointsCommandReturn;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -258,13 +273,13 @@ export function writeCommand(args: CommandArgs, buffer: Buffer): number {
             break;
         case CommandType.GetBreakpoint:
             {
-                offset += buffer.writeUInt32LE(args.breakpointId, offset);
+                offset = buffer.writeUInt32LE(args.breakpointId, offset);
             }
             break;
         case CommandType.EnableBreakpoint:
             {
-                offset += buffer.writeUInt32LE(args.breakpointId, offset);
-                offset += buffer.writeUInt8(args.enabled ? 1 : 0, offset);
+                offset = buffer.writeUInt32LE(args.breakpointId, offset);
+                offset = buffer.writeUInt8(args.enabled === true ? 1 : 0, offset);
             }
             break;
         case CommandType.AddBreakpointAtFilenameLine:
@@ -390,6 +405,23 @@ export function readCommand(type: CommandType, buffer: Buffer, offset: number): 
                 [breakpoint, offset] = readBreakpoint(buffer, offset);
                 data = {
                     breakpoint: breakpoint,
+                };
+            }
+            break;
+        case CommandType.GetBreakpoints:
+            {
+                const count = buffer.readUInt16LE(offset);
+                offset += 2;
+                const breakpoints: RemedyBreakpoint[] = [];
+                for (let i = 0; i < count; i++) {
+                    let breakpoint;
+                    [breakpoint, offset] = readBreakpoint(buffer, offset);
+                    breakpoints.push(breakpoint);
+                }
+
+                data = {
+                    count: count,
+                    breakpoints: breakpoints,
                 };
             }
             break;

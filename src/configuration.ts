@@ -13,6 +13,7 @@ export const COMMAND_ID = {
     ASK_STOP_SESSION: "remedybg.ask_stop_session",
     START_SESSION: "remedybg.start_session",
     STOP_SESSION: "remedybg.stop_session",
+    SYNC_BREAKPOINTS: "remedybg.sync_breakpoints",
     START_DEBUGGING: "remedybg.start_debugging",
     STOP_DEBUGGING: "remedybg.stop_debugging",
     STEP_INTO: "remedybg.step_into",
@@ -28,12 +29,14 @@ export const COMMAND_ID = {
 const CONFIG_ID = {
     GO_TO_LINE_ON_NEW_BREAKPOINT: "goToLineOnNewBreakpoint",
     BUILD_BEFORE_DEBUG: "buildBeforeDebug",
+    SYNC_BREAKPOINTS_AT_SESSION_START: "syncBreakpointsAtSessionStart",
     PATH: "path",
 };
 
 type ConfigStore = {
     goToLineWhenBreakpointUpdated: boolean;
     buildBeforeDebug: boolean;
+    syncBreakpointsAtSessionStart: boolean;
     remedybgPath: string;
 };
 
@@ -41,6 +44,7 @@ export let configStore: ConfigStore = {
     remedybgPath: "",
     goToLineWhenBreakpointUpdated: false,
     buildBeforeDebug: false,
+    syncBreakpointsAtSessionStart: false,
 };
 
 export function loadConfiguration() {
@@ -48,4 +52,5 @@ export function loadConfiguration() {
     configStore.goToLineWhenBreakpointUpdated = configuration.get(CONFIG_ID.GO_TO_LINE_ON_NEW_BREAKPOINT) ?? false;
     configStore.buildBeforeDebug = configuration.get(CONFIG_ID.BUILD_BEFORE_DEBUG) ?? false;
     configStore.remedybgPath = configuration.get(CONFIG_ID.PATH) ?? "";
+    configStore.syncBreakpointsAtSessionStart = configuration.get(CONFIG_ID.SYNC_BREAKPOINTS_AT_SESSION_START) ?? false;
 }

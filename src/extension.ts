@@ -5,6 +5,7 @@ import { CommandType, DebuggingTargetBehavior, ModifiedSessionBehavior } from ".
 
 let activeBuildTaskExecution: vscode.TaskExecution | null = null;
 let buildTask: vscode.Task | null = null;
+let breakpointCount: number = 0;
 
 async function fetchBuildTasks(): Promise<vscode.Task[]> {
     const tasks = await vscode.tasks.fetchTasks();
@@ -64,6 +65,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     const stopSessionCommand = vscode.commands.registerCommand(COMMAND_ID.STOP_SESSION, () => {
         command.stopSession();
+    });
+
+    const syncBreakpointsCommand = vscode.commands.registerCommand(COMMAND_ID.SYNC_BREAKPOINTS, () => {
+        command.getAllBreakpoints();
     });
 
     const setBuildTask = vscode.commands.registerCommand(COMMAND_ID.SET_BUILD_TASK, async () => {
@@ -163,12 +168,21 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
 
-        for (let i = 0; i < e.changed.length; i++) {}
-
-        for (let i = 0; i < e.removed.length; i++) {
-            const breakpoint = e.removed[i] as vscode.SourceBreakpoint;
-            command.deleteBreakpoint(breakpoint.id);
+        for (let i = 0; i < e.changed.length; i++) {
+            const breakpoint = e.changed[i];
+            command.modifyBreakpoint(breakpoint.id, breakpoint.enabled);
         }
+
+        if (e.removed.length > 0 && e.removed.length === breakpointCount) {
+            command.deleteAllBreakpoints();
+        } else {
+            for (let i = 0; i < e.removed.length; i++) {
+                const breakpoint = e.removed[i] as vscode.SourceBreakpoint;
+                command.deleteBreakpoint(breakpoint.id);
+            }
+        }
+
+        breakpointCount = vscode.debug.breakpoints.length;
     });
 
     context.subscriptions.push(askStartSessionCommand);
@@ -185,6 +199,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(exitCommand);
     context.subscriptions.push(setBuildTask);
     context.subscriptions.push(breakCommand);
+    context.subscriptions.push(syncBreakpointsCommand);
 }
 
 // This method is called when your extension is deactivated
