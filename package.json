@@ -9,7 +9,7 @@
     "publisher": "Selim Yesilkaya",
     "preview": true,
     "license": "MIT",
-    "icon": "",
+    "icon": "assets/icon.png",
     "author": {
         "name": "Selim Yesilkaya",
         "email": "selimyesilkaya@gmail.com"
@@ -28,11 +28,23 @@
         "configuration": {
             "title": "RemedyBG",
             "properties": {
+                "remedybg.path": {
+                    "type": "string",
+                    "default": "",
+                    "title": "RemedyBG: Path",
+                    "description": "Path to the `RemedyBG` executable. If not set `RemedyBG` is expected to be in `PATH` environment variable."
+                },
                 "remedybg.goToLineOnNewBreakpoint": {
                     "type": "boolean",
                     "default": false,
                     "title": "RemedyBG: Go to line on new breakpoint",
                     "description": "On RemedyBG, go to the line of the newly added breakpoint when a new breakpoint is insterted."
+                },
+                "remedybg.buildBeforeDebug": {
+                    "type": "boolean",
+                    "default": false,
+                    "title": "RemedyBG: Build before debug automatically",
+                    "description": "If set, builds the project every time before `RemedyBG: Start Debugging` command is called. Uses the default `Build Task`"
                 }
             }
         },
@@ -70,12 +82,20 @@
                 "title": "RemedyBG: Step Out"
             },
             {
+                "command": "remedybg.break",
+                "title": "RemedyBG: Break"
+            },
+            {
                 "command": "remedybg.continue_execution",
                 "title": "RemedyBG: Continue Execution"
             },
             {
                 "command": "remedybg.exit",
                 "title": "RemedyBG: Exit"
+            },
+            {
+                "command": "remedybg.set_build_task",
+                "title": "RemedyBG: Set Build Task"
             }
         ]
     },

@@ -13,17 +13,21 @@ let childProcess: ChildProcess | undefined = undefined;
 let remedybgStatusBar: vscode.StatusBarItem;
 let targetState: rbg.TargetState = rbg.TargetState.None;
 
+const breakHighlight = vscode.window.createTextEditorDecorationType({
+    backgroundColor: "rgba(255, 100, 0, 0.3)",
+});
+
 function generateRandomString(): string {
     return (Math.random() + 1).toString(36).substring(7);
 }
 
-const breakpoints: Map<number, string> = new Map();
-const breakpointsVsCode: Map<string, number> = new Map();
+const breakpointIds_RBG_VSC: Map<number, string> = new Map();
+const breakpointIds_VSC_RBG: Map<string, number> = new Map();
 
 let commandQueue: rbg.CommandArgs[] = [];
 
 export function addBreakpointAtFilenameLine(vscodeId: string, filename: string, lineNumber: number) {
-    if (breakpointsVsCode.has(vscodeId)) {
+    if (breakpointIds_VSC_RBG.has(vscodeId)) {
         return;
     }
 
@@ -31,13 +35,13 @@ export function addBreakpointAtFilenameLine(vscodeId: string, filename: string, 
 }
 
 export function deleteBreakpoint(vscodeId: string) {
-    const breakpointId = breakpointsVsCode.get(vscodeId);
+    const breakpointId = breakpointIds_VSC_RBG.get(vscodeId);
     if (!breakpointId) {
         return;
     }
 
-    breakpoints.delete(breakpointId);
-    breakpointsVsCode.delete(vscodeId);
+    breakpointIds_RBG_VSC.delete(breakpointId);
+    breakpointIds_VSC_RBG.delete(vscodeId);
     sendCommand({ type: rbg.CommandType.DeleteBreakpoint, breakpointId, vscodeId });
 }
 
@@ -77,14 +81,26 @@ const ERROR_MESSAGES = {
 };
 
 function hasBreakpointAt(filename: string, line: number): boolean {
-    const existingBreakpoints = vscode.debug.breakpoints;
-    for (let i = 0; i < existingBreakpoints.length; i++) {
-        const sourceBreakpoint = existingBreakpoints[i] as vscode.SourceBreakpoint;
-        if (sourceBreakpoint && sourceBreakpoint.location.uri.fsPath === filename && sourceBreakpoint.location.range.start.line === line - 1) {
+    const bps = vscode.debug.breakpoints;
+    for (let i = 0; i < bps.length; i++) {
+        const bp = bps[i];
+        if (bp instanceof vscode.SourceBreakpoint && bp.location.uri.fsPath === filename && bp.location.range.start.line === line - 1) {
             return true;
         }
     }
+
     return false;
+}
+
+function getBreakpointLocation(vscodeId: string): vscode.Location | null {
+    const bps = vscode.debug.breakpoints;
+    for (let i = 0; i < bps.length; i++) {
+        const bp = bps[i];
+        if (bp instanceof vscode.SourceBreakpoint && bp.id === vscodeId) {
+            return bp.location;
+        }
+    }
+    return null;
 }
 
 function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
@@ -114,15 +130,15 @@ function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
             case rbg.CommandType.AddBreakpointAtFilenameLine:
                 {
                     const { breakpointId } = data as rbg.AddBreakpointAtFilenameLineCommandReturn;
-                    breakpoints.set(breakpointId, command.vscodeId);
-                    breakpointsVsCode.set(command.vscodeId, breakpointId);
+                    breakpointIds_RBG_VSC.set(breakpointId, command.vscodeId);
+                    breakpointIds_VSC_RBG.set(command.vscodeId, breakpointId);
                 }
                 break;
             case rbg.CommandType.GetBreakpoint:
                 {
                     const { breakpoint } = data as rbg.GetBreakpointCommandReturn;
 
-                    if (breakpoints.has(breakpoint.id)) {
+                    if (breakpointIds_RBG_VSC.has(breakpoint.id)) {
                         continue;
                     }
 
@@ -136,8 +152,8 @@ function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
                                 }
 
                                 const vscodeBP: vscode.SourceBreakpoint = new vscode.SourceBreakpoint({ uri: vscode.Uri.file(filename), range: new vscode.Range(line - 1, 0, line - 1, 0) }, true);
-                                breakpoints.set(breakpoint.id, vscodeBP.id);
-                                breakpointsVsCode.set(vscodeBP.id, breakpoint.id);
+                                breakpointIds_RBG_VSC.set(breakpoint.id, vscodeBP.id);
+                                breakpointIds_VSC_RBG.set(vscodeBP.id, breakpoint.id);
                                 vscode.debug.addBreakpoints([vscodeBP]);
                             }
                             break;
@@ -163,6 +179,12 @@ function processEvent(bytesWritten: number, readBuffer: Buffer): boolean {
         case rbg.EventType.TargetStarted:
             remedybgStatusBar.text = STATUS_BAR_MESSAGE.DEBUGGING;
             break;
+        case rbg.EventType.TargetContinued:
+            {
+                const editor = vscode.window.activeTextEditor;
+                editor?.setDecorations(breakHighlight, []);
+            }
+            break;
         case rbg.EventType.ExitProcess:
             remedybgStatusBar.text = STATUS_BAR_MESSAGE.IDLE;
             break;
@@ -170,24 +192,73 @@ function processEvent(bytesWritten: number, readBuffer: Buffer): boolean {
             {
                 const breakpointId = readBuffer.readInt32LE(offset);
                 offset += 4;
-                if (breakpoints.has(breakpointId)) {
+                if (breakpointIds_RBG_VSC.has(breakpointId)) {
                     return true;
                 }
 
                 sendCommand({ type: rbg.CommandType.GetBreakpoint, breakpointId: breakpointId });
             }
             break;
+        case rbg.EventType.SourceLocationChanged:
+            {
+                let filename;
+                [filename, offset] = rbg.readString(readBuffer, offset);
+                const line = readBuffer.readUInt32LE(offset);
+                offset += 4;
+                const reason: rbg.SourceLocChangeReason = readBuffer.readUInt16LE(offset);
+                offset += 2;
+
+                switch (reason) {
+                    case rbg.SourceLocChangeReason.BreakpointHit:
+                    case rbg.SourceLocChangeReason.StepOut:
+                    case rbg.SourceLocChangeReason.StepOver:
+                    case rbg.SourceLocChangeReason.StepIn:
+                    case rbg.SourceLocChangeReason.ExceptionHit:
+                    case rbg.SourceLocChangeReason.DebugBreak:
+                        {
+                            const location = new vscode.Location(vscode.Uri.file(filename), new vscode.Range(line - 1, 0, line - 1, Number.MAX_VALUE));
+                            vscode.workspace.openTextDocument(location.uri).then(async (document) => {
+                                const editor = await vscode.window.showTextDocument(document);
+                                editor.setDecorations(breakHighlight, [location]);
+                                editor.revealRange(location.range);
+                            });
+                        }
+                        break;
+                }
+            }
+            break;
+        case rbg.EventType.BreakpointHit:
+            {
+                const breakpointId = readBuffer.readInt32LE(offset);
+                const breakpointVsCodeId = breakpointIds_RBG_VSC.get(breakpointId);
+                if (!breakpointVsCodeId) {
+                    console.log("RemedyBG: Hit breakpoint doesn't exist in VS Code, ignoring.");
+                    return true;
+                }
+
+                const location = getBreakpointLocation(breakpointVsCodeId);
+                if (!location) {
+                    console.error("Could not find breakpoint location despite having breakpoint in id map! Should never happen.");
+                    return true;
+                }
+
+                vscode.workspace.openTextDocument(location.uri).then(async (document) => {
+                    const editor = await vscode.window.showTextDocument(document);
+                    editor.revealRange(location.range);
+                });
+            }
+            break;
         case rbg.EventType.BreakpointRemoved:
             {
                 const breakpointId = readBuffer.readInt32LE(offset);
                 offset += 4;
-                const breakpointVsCodeId = breakpoints.get(breakpointId);
+                const breakpointVsCodeId = breakpointIds_RBG_VSC.get(breakpointId);
                 if (!breakpointVsCodeId) {
                     return true;
                 }
 
-                breakpoints.delete(breakpointId);
-                breakpointsVsCode.delete(breakpointVsCodeId);
+                breakpointIds_RBG_VSC.delete(breakpointId);
+                breakpointIds_VSC_RBG.delete(breakpointVsCodeId);
                 const breakpoint = vscode.debug.breakpoints.find((x) => x.id === breakpointVsCodeId);
                 if (breakpoint) {
                     vscode.debug.removeBreakpoints([breakpoint]);

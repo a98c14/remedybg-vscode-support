@@ -31,8 +31,12 @@ export enum CommandType {
     StepOut = 311,
     ContinueExecution = 312,
     RunToFileAtLine = 313,
+    BreakExecution = 314,
+    GetBreakpoints = 600,
+    AddBreakpointAtFunction = 603,
     AddBreakpointAtFilenameLine = 604,
     UpdateBreakpointLine = 608,
+    EnableBreakpoint = 609,
     DeleteBreakpoint = 610,
     GetBreakpoint = 612,
     DeleteAllBreakpoints = 611,
@@ -95,8 +99,8 @@ export enum EventType {
     TargetDetached = 103,
     TargetContinued = 104,
     SourceLocationChanged = 200,
-    KindBreakpointHit = 600,
-    KindBreakpointResolved = 601,
+    BreakpointHit = 600,
+    BreakpointResolved = 601,
     BreakpointAdded = 602,
     BreakpointModified = 603,
     BreakpointRemoved = 604,
@@ -173,6 +177,10 @@ type ContinueExecutionCommandArg = {
     type: CommandType.ContinueExecution;
 };
 
+type BreakExecutionCommandArg = {
+    type: CommandType.BreakExecution;
+};
+
 type GotoFileAtLineCommandArg = {
     type: CommandType.GotoFileAtLine;
     filename: string;
@@ -190,6 +198,12 @@ type CommandExitDebuggerCommandArg = {
     sessionBehaviour: ModifiedSessionBehavior;
 };
 
+type EnableBreakpointCommandArg = {
+    type: CommandType.EnableBreakpoint;
+    breakpointId: number;
+    enabled: boolean;
+};
+
 export type CommandArgs =
     | DeleteBreakpointCommandArg
     | AddBreakpointAtFilenameLineCommandArg
@@ -201,7 +215,9 @@ export type CommandArgs =
     | StepOutCommandArg
     | ContinueExecutionCommandArg
     | GetBreakpointCommandArg
-    | CommandExitDebuggerCommandArg;
+    | CommandExitDebuggerCommandArg
+    | EnableBreakpointCommandArg
+    | BreakExecutionCommandArg;
 
 /* Command Return */
 export type AddBreakpointAtFilenameLineCommandReturn = {
@@ -217,13 +233,13 @@ export type CommandReturn = AddBreakpointAtFilenameLineCommandReturn | GetBreakp
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function writeString(str: string, buffer: Buffer, offset: number): number {
+export function writeString(str: string, buffer: Buffer, offset: number): number {
     buffer.writeUInt16LE(str.length, offset);
     const { written } = encoder.encodeInto(str, buffer.subarray(offset + 2));
     return offset + written + 2;
 }
 
-function readString(buffer: Buffer, offset: number): [str: string, offset: number] {
+export function readString(buffer: Buffer, offset: number): [str: string, offset: number] {
     const length = buffer.readUInt16LE(offset);
     offset += 2;
     const str = decoder.decode(buffer.subarray(offset, offset + length));
@@ -243,6 +259,12 @@ export function writeCommand(args: CommandArgs, buffer: Buffer): number {
         case CommandType.GetBreakpoint:
             {
                 offset += buffer.writeUInt32LE(args.breakpointId, offset);
+            }
+            break;
+        case CommandType.EnableBreakpoint:
+            {
+                offset += buffer.writeUInt32LE(args.breakpointId, offset);
+                offset += buffer.writeUInt8(args.enabled ? 1 : 0, offset);
             }
             break;
         case CommandType.AddBreakpointAtFilenameLine:
