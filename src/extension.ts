@@ -162,8 +162,8 @@ export function activate(context: vscode.ExtensionContext) {
             const breakpoint = e.added[i] as vscode.SourceBreakpoint;
             const breakpointPath = breakpoint.location.uri.fsPath;
             const breakpointLine = breakpoint.location.range.start.line + 1;
-            command.addBreakpointAtFilenameLine(breakpoint.id, breakpointPath, breakpointLine);
-            if (configStore.goToLineWhenBreakpointUpdated) {
+            const added = command.addBreakpointAtFilenameLine(breakpoint.id, breakpointPath, breakpointLine);
+            if (configStore.goToLineWhenBreakpointUpdated && added) {
                 command.sendCommand({ type: CommandType.GotoFileAtLine, filename: breakpointPath, lineNumber: breakpointLine });
             }
         }

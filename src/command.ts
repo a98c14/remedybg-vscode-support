@@ -14,7 +14,7 @@ let remedybgStatusBar: vscode.StatusBarItem;
 let targetState: rbg.TargetState = rbg.TargetState.None;
 
 const breakHighlight = vscode.window.createTextEditorDecorationType({
-    backgroundColor: "rgba(255, 100, 0, 0.3)",
+    backgroundColor: new vscode.ThemeColor("editor.focusedStackFrameHighlightBackground"),
 });
 
 function generateRandomString(): string {
@@ -26,12 +26,13 @@ const breakpointIds_VSC_RBG: Map<string, number> = new Map();
 
 let commandQueue: rbg.CommandArgs[] = [];
 
-export function addBreakpointAtFilenameLine(vscodeId: string, filename: string, lineNumber: number) {
+export function addBreakpointAtFilenameLine(vscodeId: string, filename: string, lineNumber: number): boolean {
     if (breakpointIds_VSC_RBG.has(vscodeId)) {
-        return;
+        return false;
     }
 
     sendCommand({ type: rbg.CommandType.AddBreakpointAtFilenameLine, filename, lineNumber, vscodeId });
+    return true;
 }
 
 export function modifyBreakpoint(vscodeId: string, enabled: boolean) {
@@ -159,6 +160,10 @@ function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
         }
 
         switch (command.type) {
+            case rbg.CommandType.StopDebugging: {
+                vscode.window.activeTextEditor?.setDecorations(breakHighlight, []);
+                break;
+            }
             case rbg.CommandType.AddBreakpointAtFilenameLine:
                 {
                     const { breakpointId } = data as rbg.AddBreakpointAtFilenameLineCommandReturn;
@@ -255,7 +260,11 @@ function processEvent(bytesWritten: number, readBuffer: Buffer): boolean {
             }
             break;
         case rbg.EventType.ExitProcess:
-            remedybgStatusBar.text = STATUS_BAR_MESSAGE.IDLE;
+            {
+                const editor = vscode.window.activeTextEditor;
+                editor?.setDecorations(breakHighlight, []);
+                remedybgStatusBar.text = STATUS_BAR_MESSAGE.IDLE;
+            }
             break;
         case rbg.EventType.BreakpointModified:
         case rbg.EventType.BreakpointAdded:
@@ -345,6 +354,13 @@ export function startSession() {
         return;
     }
 
+    if (!remedybgStatusBar) {
+        remedybgStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    }
+    remedybgStatusBar.command = COMMAND_ID.ASK_START_SESSION;
+    remedybgStatusBar.text = STATUS_BAR_MESSAGE.DISCONNECTED;
+    remedybgStatusBar.show();
+
     const name = vscode.workspace.name + "_" + generateRandomString();
     const commandPipePath = PIPE_PREFIX + name;
     const eventPipePath = PIPE_PREFIX + name + "-events";
@@ -421,11 +437,6 @@ export function startSession() {
             eventClient?.destroy();
         });
     }, 500);
-
-    remedybgStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    remedybgStatusBar.command = COMMAND_ID.ASK_START_SESSION;
-    remedybgStatusBar.text = STATUS_BAR_MESSAGE.DISCONNECTED;
-    remedybgStatusBar.show();
 }
 
 export function stopSession() {
@@ -433,6 +444,10 @@ export function stopSession() {
         vscode.window.showInformationMessage("RemedyBG: Session is not active.");
         return;
     }
+
+    const editor = vscode.window.activeTextEditor;
+    editor?.setDecorations(breakHighlight, []);
+
     childProcess?.kill();
     sendCommand({
         type: rbg.CommandType.CommandExitDebugger,

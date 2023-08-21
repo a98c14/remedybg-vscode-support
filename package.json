@@ -34,6 +34,12 @@
                     "title": "RemedyBG: Path",
                     "description": "Path to the `RemedyBG` executable. If not set `RemedyBG` is expected to be in `PATH` environment variable."
                 },
+                "remedybg.syncBreakpointsAtSessionStart": {
+                    "type": "boolean",
+                    "default": true,
+                    "title": "RemedyBG: Sync breakpoints at session start",
+                    "description": "When a new session is started, syncs the VS Code breakpoints with RemedyBG breakpoints."
+                },
                 "remedybg.goToLineOnNewBreakpoint": {
                     "type": "boolean",
                     "default": false,
