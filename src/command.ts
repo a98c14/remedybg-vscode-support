@@ -128,7 +128,7 @@ function getBreakpointIdAt(filename: string, line: number): string | null {
     const bps = vscode.debug.breakpoints;
     for (let i = 0; i < bps.length; i++) {
         const bp = bps[i];
-        if (bp instanceof vscode.SourceBreakpoint && bp.location.uri.fsPath === filename && bp.location.range.start.line === line - 1) {
+        if (bp instanceof vscode.SourceBreakpoint && bp.location.uri.fsPath === filename && bp.location.range.start.line === line) {
             return bp.id;
         }
     }
@@ -187,13 +187,13 @@ function processResponse(bytesWritten: number, readBuffer: Buffer): boolean {
                             case rbg.BreakpointKind.FilenameLine:
                                 {
                                     const filename = breakpoint.kindData.fileName;
-                                    const line = breakpoint.kindData.line;
+                                    const line = breakpoint.kindData.line - 1;
                                     const existingBreakpoint = getBreakpointIdAt(filename, line);
                                     if (existingBreakpoint) {
                                         breakpointIds_RBG_VSC.set(breakpoint.id, existingBreakpoint);
                                         breakpointIds_VSC_RBG.set(existingBreakpoint, breakpoint.id);
                                     } else {
-                                        const vscodeBP: vscode.SourceBreakpoint = new vscode.SourceBreakpoint({ uri: vscode.Uri.file(filename), range: new vscode.Range(line - 1, 0, line - 1, 0) }, true);
+                                        const vscodeBP: vscode.SourceBreakpoint = new vscode.SourceBreakpoint({ uri: vscode.Uri.file(filename), range: new vscode.Range(line, 0, line, 0) }, true);
                                         breakpointIds_RBG_VSC.set(breakpoint.id, vscodeBP.id);
                                         breakpointIds_VSC_RBG.set(vscodeBP.id, breakpoint.id);
                                         breakpointsToAdd.push(vscodeBP);
@@ -296,10 +296,13 @@ function processEvent(bytesWritten: number, readBuffer: Buffer): boolean {
                     case rbg.SourceLocChangeReason.DebugBreak:
                         {
                             const location = new vscode.Location(vscode.Uri.file(filename), new vscode.Range(line - 1, 0, line - 1, Number.MAX_VALUE));
+
                             vscode.workspace.openTextDocument(location.uri).then(async (document) => {
-                                const editor = await vscode.window.showTextDocument(document);
+                                const editor = await vscode.window.showTextDocument(document, {
+                                    selection: location.range,
+                                    preserveFocus: false,
+                                });
                                 editor.setDecorations(breakHighlight, [location]);
-                                editor.revealRange(location.range);
                             });
                         }
                         break;
@@ -404,6 +407,8 @@ export function startSession() {
             if (configStore.syncBreakpointsAtSessionStart) {
                 getAllBreakpoints();
             }
+
+            setTimeout(() => sendCommand({ type: rbg.CommandType.SetBringToForegroundOnSuspended, enabled: false }), 100);
         });
 
         client.on("end", () => {

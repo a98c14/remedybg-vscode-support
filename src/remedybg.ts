@@ -11,6 +11,7 @@ export enum CommandType {
     BringDebuggerToForeground = 50,
     SetWindowPos = 51,
     GetWindowPos = 52,
+    SetBringToForegroundOnSuspended = 53,
     CommandExitDebugger = 75,
     GetIsSessionModified = 100,
     GetSessionFilename = 101,
@@ -212,6 +213,11 @@ type EnableBreakpointCommandArg = {
     enabled: boolean;
 };
 
+type SetBringToForegroundOnSuspendedCommandArg = {
+    type: CommandType.SetBringToForegroundOnSuspended;
+    enabled: boolean;
+};
+
 export type CommandArgs =
     | DeleteBreakpointCommandArg
     | AddBreakpointAtFilenameLineCommandArg
@@ -227,7 +233,8 @@ export type CommandArgs =
     | EnableBreakpointCommandArg
     | BreakExecutionCommandArg
     | DeleteAllBreakpointsCommandArg
-    | GetBreakpointsCommandArg;
+    | GetBreakpointsCommandArg
+    | SetBringToForegroundOnSuspendedCommandArg;
 
 /* Command Return */
 export type AddBreakpointAtFilenameLineCommandReturn = {
@@ -265,6 +272,11 @@ export function readString(buffer: Buffer, offset: number): [str: string, offset
 export function writeCommand(args: CommandArgs, buffer: Buffer): number {
     let offset = buffer.writeUInt16LE(args.type);
     switch (args.type) {
+        case CommandType.SetBringToForegroundOnSuspended:
+            {
+                offset = buffer.writeUInt8(args.enabled ? 1 : 0, offset);
+            }
+            break;
         case CommandType.CommandExitDebugger:
             {
                 offset = buffer.writeUInt8(args.debugBehaviour, offset);
@@ -279,7 +291,7 @@ export function writeCommand(args: CommandArgs, buffer: Buffer): number {
         case CommandType.EnableBreakpoint:
             {
                 offset = buffer.writeUInt32LE(args.breakpointId, offset);
-                offset = buffer.writeUInt8(args.enabled === true ? 1 : 0, offset);
+                offset = buffer.writeUInt8(args.enabled ? 0 : 1, offset);
             }
             break;
         case CommandType.AddBreakpointAtFilenameLine:
